@@ -53,6 +53,36 @@ psql -h 127.0.0.1 -U postgres -d ticketsdb -c "SELECT ticket_id, title, priority
 > Note: Homebrew's Postgres uses `trust` authentication for local connections, so any password
 > is accepted from your own machine. Passwords are enforced on Cloud SQL.
 
+## MCP Toolbox for Databases
+
+[MCP Toolbox](https://github.com/googleapis/mcp-toolbox) is an MCP server that turns SQL
+statements declared in YAML into tools an agent can call. The agent never sees credentials or
+writes SQL; it only calls named tools.
+
+| File | Purpose |
+|---|---|
+| `deployment/mcp-toolbox/tools.yaml` | 8 ticket tools + the `tickets_toolset` group, shared by all environments |
+| `deployment/mcp-toolbox/local.yaml` | Local Postgres source + a full-text `search-tickets` |
+| `deployment/mcp-toolbox/run_local.sh` | Downloads Toolbox v1.15.0 on first run, starts it with both files |
+
+Tools in `tickets_toolset`: `search-tickets`, `get-ticket-by-id`, `get-tickets-by-assignee`,
+`get-tickets-by-status`, `get-tickets-by-priority`, `get-tickets-by-date-range`,
+`update-ticket-priority`, `update-ticket-status`, `create-new-ticket`.
+
+Start it in its own terminal and leave it running:
+
+```bash
+./deployment/mcp-toolbox/run_local.sh
+# ... INFO "Initialized 9 tools: ..."
+# ... INFO "Server ready to serve!"
+```
+
+It serves MCP at `http://127.0.0.1:5000/mcp`. Locally, `search-tickets` uses Postgres full-text
+search; the Cloud SQL deployment swaps in vector (embedding) search under the same tool name.
+
+> macOS note: AirPlay Receiver also listens on port 5000, and `localhost` resolves to it (IPv6)
+> and returns 403. Always use `127.0.0.1:5000`, which is what `MCP_TOOLBOX_URL` defaults to.
+
 ## Run
 
 Run these from inside `03-bug-assistant-mcp/`. Running `adk web` from the repo root makes ADK

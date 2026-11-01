@@ -1,0 +1,34 @@
+# Local overlay: Homebrew Postgres source + keyword-based search-tickets.
+# Use with: toolbox --configs tools.yaml,local.yaml
+kind: source
+name: tickets-db
+type: postgres
+host: ${DB_HOST:127.0.0.1}
+port: ${DB_PORT:5432}
+database: ${DB_NAME:ticketsdb}
+user: ${DB_USER}
+password: ${DB_PASS}
+---
+# Local stand-in for vector search: Postgres full-text search where any query
+# word may match, ranked by relevance. Cloud overlay swaps in embeddings.
+kind: tool
+name: search-tickets
+type: postgres-sql
+source: tickets-db
+description: Search for similar tickets based on their descriptions.
+parameters:
+  - name: query
+    type: string
+    description: Natural-language description of the issue to find similar tickets for.
+statement: |
+  SELECT ticket_id, title, description, assignee, priority, status, rank
+  FROM (
+    SELECT *, ts_rank(
+             to_tsvector('english', title || ' ' || coalesce(description, '')),
+             replace(plainto_tsquery('english', $1)::text, '&', '|')::tsquery
+           ) AS rank
+    FROM tickets
+  ) ranked
+  WHERE rank > 0
+  ORDER BY rank DESC
+  LIMIT 3;
