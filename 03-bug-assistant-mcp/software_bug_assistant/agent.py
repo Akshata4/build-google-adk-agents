@@ -1,12 +1,22 @@
-# Step 1 placeholder: a tool-less agent used only to verify the install and
-# Gemini credentials. Tools are added in later steps.
-from dotenv import load_dotenv
 from google.adk.agents import Agent
 
-load_dotenv()
+from .prompt import agent_instruction
+from .tools.tools import (
+    MODEL,
+    get_current_date,
+    github_tools,
+    search_tool,
+    stack_exchange_tool,
+    toolbox_tools,
+)
+
+tools = [get_current_date, search_tool, stack_exchange_tool, toolbox_tools]
+if github_tools is not None:
+    tools.append(github_tools)
 
 root_agent = Agent(
-    model="gemini-2.5-flash",
+    model=MODEL,
     name="software_assistant",
-    instruction="You are a helpful software bug assistant.",
+    instruction=agent_instruction,
+    tools=tools,
 )
