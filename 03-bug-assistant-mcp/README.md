@@ -11,6 +11,59 @@ Built with Google ADK, it combines five tool types:
 
 Reference: [Tools make an agent: from zero to assistant with ADK](https://cloud.google.com/blog/topics/developers-practitioners/tools-make-an-agent-from-zero-to-assistant-with-adk)
 
+**Video walkthrough:** _link coming soon_
+
+## Architecture
+
+```mermaid
+flowchart LR
+    user([User]) <--> web["ADK web UI<br/>adk web"]
+    web <--> agent["software_assistant<br/>ADK Agent · gemini-2.5-flash"]
+
+    agent --> date["get_current_date<br/><i>Python function</i>"]
+    agent --> search["search_agent<br/><i>sub-agent + Google Search</i>"]
+    agent --> so["stack_exchange<br/><i>LangChain tool</i>"]
+    agent -- "MCP" --> toolbox["MCP Toolbox<br/>127.0.0.1:5000/mcp"]
+    agent -- "MCP over HTTPS" --> gh["GitHub MCP server<br/>api.githubcopilot.com"]
+
+    toolbox -- "SQL" --> pg[("Postgres<br/>ticketsdb.tickets")]
+    search --> google[(Google Search)]
+    so --> soapi[(Stack Exchange API)]
+    gh --> ghapi[(GitHub repos & issues)]
+```
+
+### How a request flows
+
+Example: *"Find the PDF export ticket and bump it to P0"*
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant A as ADK Agent
+    participant G as Gemini
+    participant T as MCP Toolbox
+    participant P as Postgres
+    U->>A: Find the PDF export ticket and bump it to P0
+    A->>G: prompt + instruction + tool schemas
+    G-->>A: call search-tickets(query="PDF export truncating")
+    A->>T: MCP tools/call search-tickets
+    T->>P: full-text search SQL
+    P-->>T: ticket 7
+    T-->>A: {"ticket_id": 7, ...}
+    A->>G: tool result
+    G-->>A: call update-ticket-priority(priority="P0 - Critical", ticket_id=7)
+    A->>T: MCP tools/call update-ticket-priority
+    T->>P: UPDATE tickets SET priority = $1 WHERE ticket_id = $2
+    P-->>T: updated row (trigger refreshes updated_time)
+    T-->>A: {"ticket_id": 7, "priority": "P0 - Critical"}
+    A->>G: tool result
+    G-->>A: final answer
+    A-->>U: Ticket 7 is now P0 - Critical
+```
+
+Gemini only chooses tools and fills in their parameters. ADK runs the calls. The SQL and
+database credentials stay inside MCP Toolbox.
+
 ## Project layout
 
 ```
@@ -22,6 +75,7 @@ Reference: [Tools make an agent: from zero to assistant with ADK](https://cloud.
 ├── deployment/db/            # init.sql + setup_local.sh
 ├── deployment/mcp-toolbox/   # tools.yaml, local.yaml, run_local.sh
 ├── .env.example
+├── DEMO.md                   # video walkthrough script
 └── pyproject.toml
 ```
 
@@ -55,7 +109,8 @@ psql -h 127.0.0.1 -U postgres -d ticketsdb -c "SELECT ticket_id, title, priority
 ```
 
 > Note: Homebrew's Postgres uses `trust` authentication for local connections, so any password
-> is accepted from your own machine. Passwords are enforced on Cloud SQL.
+> is accepted from your own machine. Use real password authentication for any shared or hosted
+> database.
 
 ## MCP Toolbox for Databases
 
@@ -81,8 +136,10 @@ Start it in its own terminal and leave it running:
 # ... INFO "Server ready to serve!"
 ```
 
-It serves MCP at `http://127.0.0.1:5000/mcp`. Locally, `search-tickets` uses Postgres full-text
-search; the Cloud SQL deployment swaps in vector (embedding) search under the same tool name.
+It serves MCP at `http://127.0.0.1:5000/mcp`. `search-tickets` uses Postgres full-text search
+(any query word may match, ranked by relevance). Because the environment-specific pieces live in
+`local.yaml`, a hosted deployment can add its own overlay, e.g. Cloud SQL with vector
+embeddings, under the same tool name without changing the agent.
 
 > macOS note: AirPlay Receiver also listens on port 5000, and `localhost` resolves to it (IPv6)
 > and returns 403. Always use `127.0.0.1:5000`, which is what `MCP_TOOLBOX_URL` defaults to.
@@ -132,3 +189,21 @@ Reset the sample data at any time with `./deployment/db/setup_local.sh`.
 
 > Gemini free tier limits: `gemini-2.5-flash` allows 5 requests/minute and 20 requests/day, and
 > one question can take 2-4 model calls. Use a billed API key or Vertex AI for heavier testing.
+
+## Changes from the reference sample
+
+The original sample (`google/adk-samples`, `python/agents/software-bug-assistant`) targeted
+ADK 1.x and MCP Toolbox v0.6. This version was rebuilt against current releases:
+
+| Area | Reference | This project |
+|---|---|---|
+| ADK | `google-adk` 1.8 | `google-adk[mcp,toolbox]` 2.13 (MCP and Toolbox are optional extras) |
+| Toolbox config | single-map `tools.yaml`, `--tools-file` | v1.15 multi-document YAML, `--configs tools.yaml,local.yaml` |
+| Toolbox client | `ToolboxSyncClient` at import time; tools silently vanish if Toolbox is down | ADK `ToolboxToolset`, connects lazily when the agent runs |
+| Local search | `search-tickets` needed Cloud SQL embeddings; broken locally | full-text `search-tickets` in `local.yaml` |
+| SQL tools | `ticket_id` typed as string; date range excluded the end date; blank create values not defaulted | integer IDs, inclusive date range, `NULLIF`/`COALESCE` defaults, updates return the changed row |
+| Google Search | hand-built `AgentTool` | `GoogleSearchAgentTool` (propagates grounding metadata) |
+| GitHub token | placeholder token caused 401s mid-conversation | placeholder detected; GitHub tools skipped with a warning |
+| Resilience | none | Gemini retries with exponential backoff on 429/500/503/504 |
+| Toolbox security | listens for any host/origin | `--allowed-hosts` / `--allowed-origins` restricted to localhost |
+| DB setup | SQL pasted by hand | `setup_local.sh` + `init.sql`, re-runnable, password read from `.env` |
