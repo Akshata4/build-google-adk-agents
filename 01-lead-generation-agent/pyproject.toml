@@ -1,0 +1,24 @@
+[project]
+name = "lead-generation-agent"
+version = "0.1.0"
+description = "Deep research lead generation agent built with Google ADK"
+authors = [{ name = "Akshata Madavi", email = "akshatamadavi@gmail.com" }]
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "google-adk>=2.13.0",
+    "python-dotenv>=1.2.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["lead_generation_agent"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
