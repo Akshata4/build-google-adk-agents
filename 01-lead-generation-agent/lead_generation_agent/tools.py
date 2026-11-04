@@ -15,4 +15,8 @@ def set_company_count(count: int, tool_context: ToolContext) -> dict:
         return {"status": "error", "message": "count must be between 1 and 10"}
     tool_context.state["k"] = count
     tool_context.state["stage"] = "pattern_discovery"
-    return {"status": "ok", "k": count}
+    return {
+        "status": "ok",
+        "k": count,
+        "next_step": "Call PatternDiscoveryAgent now, in this same turn.",
+    }

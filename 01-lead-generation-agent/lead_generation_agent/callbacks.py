@@ -12,9 +12,10 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.tools import BaseTool, ToolContext
 
 from .sub_agents.intent_extractor import intent_extractor_agent
+from .sub_agents.pattern_discovery import pattern_discovery_agent
 
 DEFAULT_STATE = {
-    "stage": "intent",  # intent -> choose_k -> pattern_discovery -> ...
+    "stage": "intent",  # intent -> choose_k -> pattern_discovery -> patterns_ready
     "country": "",
     "industry": "",
     "k": 3,  # companies to study
@@ -34,11 +35,15 @@ def before_agent_run(callback_context: CallbackContext) -> None:
 def after_tool_run(
     tool: BaseTool, args: dict[str, Any], tool_context: ToolContext, tool_response: Any
 ) -> None:
-    """Advance the stage after the intent extractor returns.
+    """Advance the stage after an agent tool returns.
 
     Compares by name: `tool` is the AgentTool wrapper, not the agent itself,
     and the response is a plain dict (or JSON string), not the Pydantic model.
     """
+    if tool.name == pattern_discovery_agent.name:
+        if tool_context.state.get("discovered_patterns"):
+            tool_context.state["stage"] = "patterns_ready"
+        return
     if tool.name != intent_extractor_agent.name:
         return
     result = tool_response
