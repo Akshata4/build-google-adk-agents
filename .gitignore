@@ -21,3 +21,6 @@ venv/
 
 # ADK local session storage
 .adk/
+
+# Repositories cloned by the Gemini CLI agent
+**/workspace/
