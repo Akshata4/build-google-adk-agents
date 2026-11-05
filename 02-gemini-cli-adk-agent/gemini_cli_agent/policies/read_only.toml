@@ -1,0 +1,10 @@
+# Read-only policy for Gemini CLI in headless mode.
+#
+# --approval-mode plan alone is NOT read-only headless: with no human to
+# confirm, the CLI can approve exit_plan_mode itself and then write files and
+# run shell commands. Denied tools are removed from the model's view entirely.
+[[rule]]
+toolName = ["write_file", "replace", "run_shell_command", "exit_plan_mode"]
+decision = "deny"
+priority = 999
+denyMessage = "This session is read-only: analyze and report, don't modify anything."
