@@ -12,10 +12,13 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.tools import BaseTool, ToolContext
 
 from .sub_agents.intent_extractor import intent_extractor_agent
+from .sub_agents.lead_generation import lead_generation_agent
 from .sub_agents.pattern_discovery import pattern_discovery_agent
 
 DEFAULT_STATE = {
-    "stage": "intent",  # intent -> choose_k -> pattern_discovery -> patterns_ready
+    # intent -> choose_k -> pattern_discovery -> patterns_ready
+    # -> lead_generation -> done
+    "stage": "intent",
     "country": "",
     "industry": "",
     "k": 3,  # companies to study
@@ -43,6 +46,10 @@ def after_tool_run(
     if tool.name == pattern_discovery_agent.name:
         if tool_context.state.get("discovered_patterns"):
             tool_context.state["stage"] = "patterns_ready"
+        return
+    if tool.name == lead_generation_agent.name:
+        if tool_context.state.get("final_lead_report"):
+            tool_context.state["stage"] = "done"
         return
     if tool.name != intent_extractor_agent.name:
         return

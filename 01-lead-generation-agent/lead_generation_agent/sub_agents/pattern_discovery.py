@@ -3,7 +3,7 @@
 PatternDiscoveryAgent (SequentialAgent)
 1. CompanyFinderAgent        google_search -> company_finder_output
 2. CompanyFormatterAgent     output_schema -> companies_found_structured
-3. ResearchOrchestratorAgent ParallelAgent built at run time, one branch per company:
+3. ResearchOrchestratorAgent ParallelAgent built at run time, one per company:
                              Validator_i -> SignalSearcher_i -> SignalFormatter_i
                              -> validation_result_i, signal_research_i, research_findings_i
 4. SynthesizerOrchestrator   plain code -> all_research_findings
@@ -11,24 +11,19 @@ PatternDiscoveryAgent (SequentialAgent)
 """
 
 import json
-import warnings
-from collections.abc import AsyncGenerator
 
-from google.adk.agents import BaseAgent, LlmAgent, ParallelAgent, SequentialAgent
-from google.adk.agents.invocation_context import InvocationContext
+from google.adk.agents import LlmAgent, SequentialAgent
 from google.adk.agents.readonly_context import ReadonlyContext
-from google.adk.events import Event, EventActions
 from google.adk.tools import google_search
-from google.genai import types
 
 from ..config import ADVANCED_MODEL, FAST_MODEL
 from ..schemas import CompanyFinderOutput, CompanyResearch
-from .common import as_dict, make_validator, resolve_sources, save_grounding_sources
-
-# Sequential/ParallelAgent are deprecated in favour of Workflow in ADK 2.x, but
-# Workflow can't yet run under an LlmAgent (here: via AgentTool), so keep them.
-warnings.filterwarnings(
-    "ignore", message=r".*(Sequential|Parallel)Agent is deprecated.*"
+from .common import (
+    ParallelResearchOrchestrator,
+    ResultCollector,
+    as_dict,
+    make_validator,
+    save_grounding_sources,
 )
 
 
@@ -40,13 +35,14 @@ def _companies(state) -> list[dict]:
 # ----- 1. Find past successful companies -----
 def _finder_instruction(ctx: ReadonlyContext) -> str:
     s = ctx.state
+    since_year = int(str(s.get("current_time"))[:4]) - 3
     return f"""
     You are a market research analyst. Current date: {s.get("current_time")}.
 
     Use Google Search to find {s.get("k", 3)} foreign companies in the
     {s.get("industry")} industry that successfully entered {s.get("country")}
-    in {int(str(s.get("current_time"))[:4]) - 3} or later (opened an office, launched a product, got a licence,
-    acquired a local company, or similar).
+    in {since_year} or later (opened an office, launched a product, got a
+    licence, acquired a local company, or similar).
 
     Prefer well-documented entries with news coverage. For each company give:
     name, headquarters country, how it entered, and when (year and month if
@@ -157,76 +153,41 @@ def _signal_formatter(i: int) -> LlmAgent:
     )
 
 
-class ResearchOrchestratorAgent(BaseAgent):
-    """Builds one research pipeline per company and runs them in parallel.
-
-    The number of companies is only known after the formatter runs, so the
-    ParallelAgent can't be declared up front.
-    """
-
-    async def _run_async_impl(
-        self, ctx: InvocationContext
-    ) -> AsyncGenerator[Event, None]:
-        companies = _companies(ctx.session.state)
-        if not companies:
-            yield Event(
-                author=self.name,
-                content=types.Content(
-                    role="model",
-                    parts=[types.Part(text="No companies were found to research.")],
-                ),
-            )
-            return
-
-        pipelines = [
-            SequentialAgent(
-                name=f"CompanyResearch_{i}",
-                sub_agents=[
-                    make_validator(
-                        f"Validator_{i}", _describe_company(i), f"validation_result_{i}"
-                    ),
-                    _signal_searcher(i),
-                    _signal_formatter(i),
-                ],
-            )
-            for i in range(len(companies))
-        ]
-        parallel = ParallelAgent(name="ParallelCompanyResearch", sub_agents=pipelines)
-        async for event in parallel.run_async(ctx):
-            yield event
+def _company_pipeline(i: int) -> SequentialAgent:
+    return SequentialAgent(
+        name=f"CompanyResearch_{i}",
+        sub_agents=[
+            make_validator(
+                f"Validator_{i}", _describe_company(i), f"validation_result_{i}"
+            ),
+            _signal_searcher(i),
+            _signal_formatter(i),
+        ],
+    )
 
 
-research_orchestrator_agent = ResearchOrchestratorAgent(
+research_orchestrator_agent = ParallelResearchOrchestrator(
     name="ResearchOrchestratorAgent",
     description="Researches every found company in parallel.",
+    get_items=_companies,
+    build_pipeline=_company_pipeline,
+    reset_prefixes=[
+        "validation_result_",
+        "signal_research_",
+        "sources_",
+        "research_findings_",
+    ],
 )
 
 
 # ----- 4. Collect the parallel results (no LLM call) -----
-class SynthesizerOrchestratorAgent(BaseAgent):
-    """Gathers research_findings_i into one list for the synthesizer."""
-
-    async def _run_async_impl(
-        self, ctx: InvocationContext
-    ) -> AsyncGenerator[Event, None]:
-        state = ctx.session.state
-        findings = []
-        for i in range(len(_companies(state))):
-            result = as_dict(state.get(f"research_findings_{i}"))
-            if result:
-                findings.append(
-                    resolve_sources(result, state.get(f"sources_{i}") or [])
-                )
-        validated = [f for f in findings if f.get("validated")]
-        yield Event(
-            author=self.name,
-            actions=EventActions(state_delta={"all_research_findings": validated}),
-        )
-
-
-synthesizer_orchestrator_agent = SynthesizerOrchestratorAgent(
+synthesizer_orchestrator_agent = ResultCollector(
     name="SynthesizerOrchestratorAgent",
-    description="Collects the per-company research results.",
+    description="Collects the validated per-company research results.",
+    get_items=_companies,
+    result_prefix="research_findings_",
+    sources_prefix="sources_",
+    output_key="all_research_findings",
 )
 
 

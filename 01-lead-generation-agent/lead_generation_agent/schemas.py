@@ -56,3 +56,39 @@ class CompanyResearch(BaseModel):
     signals: list[Signal] = Field(
         description="Signals that appeared BEFORE the expansion, oldest first."
     )
+
+
+class Lead(BaseModel):
+    name: str = Field(description="Company name.")
+    headquarters: str = Field(description="Country where the company is headquartered.")
+    why_promising: str = Field(
+        description="One sentence on the signals that make it a likely entrant."
+    )
+
+
+class LeadFinderOutput(BaseModel):
+    leads: list[Lead]
+
+
+class LeadAnalysis(BaseModel):
+    company_name: str
+    headquarters: str
+    validated: bool = Field(
+        description=(
+            "True only if the company is real, in the target industry, and has "
+            "NOT already launched in the target country."
+        )
+    )
+    validation_notes: str = Field(description="One sentence explaining the validation.")
+    fit_score: int = Field(
+        description="0-100: how closely its current signals match the discovered patterns."
+    )
+    signals: list[Signal] = Field(
+        description="Current signals that match the patterns, newest first."
+    )
+    missing_signals: list[str] = Field(
+        description="Pattern signals not found yet for this company."
+    )
+    recommended_next_step: str = Field(
+        description="One concrete outreach suggestion for a sales team."
+    )

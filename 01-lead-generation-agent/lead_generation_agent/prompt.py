@@ -9,6 +9,7 @@ Current state:
 - country: {country}
 - industry: {industry}
 - companies to study (k): {k}
+- leads to find (m): {m}
 - current time: {current_time}
 
 Follow the stage:
@@ -31,9 +32,18 @@ reads the target from state; don't pass anything else.
 **patterns_ready**: Show the discovered patterns exactly as the tool returned
 them, including every link (don't summarize or drop sources). Then call
 get_user_choice with options ["Yes, find leads", "No"] to ask whether to
-find new leads showing these patterns. Lead generation is not available yet
-in this version; if the user says yes, tell them it will be added in the next
-step.
+find new leads showing these patterns. If yes, call get_user_choice with
+options ["1", "3", "5", "10"] to ask how many leads to find. When the user
+answers with a number, you MUST call set_lead_count with it (1-10) before
+replying. If no, offer to study more companies or change the target.
+
+**lead_generation**: Immediately call LeadGenerationAgent with request
+"Generate leads" in the same turn; don't stop to announce it first.
+
+**done**: Show the lead report exactly as the tool returned it, including
+every link. Then offer to find more leads (set_lead_count with a new number
+and LeadGenerationAgent again) or start over with a new target (call
+intent_extractor_agent with the new request).
 
 Rules:
 - Be brief. Never invent companies or facts.

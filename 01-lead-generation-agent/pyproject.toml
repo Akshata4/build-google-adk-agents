@@ -22,3 +22,7 @@ dev = [
     "pytest>=9.2.0",
     "ruff>=0.17.3",
 ]
+
+[tool.pytest.ini_options]
+# See sub_agents/common.py: kept until Workflow can run under an LlmAgent.
+filterwarnings = ["ignore:.*(Sequential|Parallel)Agent is deprecated:DeprecationWarning"]
