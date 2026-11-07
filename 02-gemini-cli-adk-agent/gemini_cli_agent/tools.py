@@ -18,11 +18,13 @@ from .config import (
     GEMINI_CLI_MODEL,
     GEMINI_CLI_PATH,
     GEMINI_CLI_TIMEOUT,
+    PROJECT_DIR,
     WORKSPACE_DIR,
 )
 
 POLICY_DIR = Path(__file__).resolve().parent / "policies"
 READ_ONLY_POLICY = POLICY_DIR / "read_only.toml"
+SAMPLE_PROJECT_DIR = PROJECT_DIR / "sample_project"
 CLONE_TIMEOUT = 300
 MAX_RESPONSE_CHARS = 20_000
 
@@ -135,6 +137,51 @@ async def prepare_repository(github_url: str, tool_context: ToolContext) -> dict
     }
 
 
+async def prepare_sample_project(tool_context: ToolContext) -> dict:
+    """Copies the bundled sample project (a small shopping cart package with
+    no tests) into the workspace and makes it the current repository.
+
+    Use it to demo test generation without cloning anything. Every call
+    starts from a fresh copy.
+
+    Returns:
+        status, the local folder name and its files.
+    """
+    path = WORKSPACE_DIR / "sample__shopping_cart"
+    shutil.rmtree(path, ignore_errors=True)
+    shutil.copytree(
+        SAMPLE_PROJECT_DIR, path, ignore=shutil.ignore_patterns("__pycache__")
+    )
+    # A git baseline, so changes made by the pipeline can be checked.
+    for args in (
+        ["git", "init", "-q"],
+        ["git", "add", "-A"],
+        [
+            "git",
+            "-c",
+            "user.name=sample",
+            "-c",
+            "user.email=sample@example.com",
+            "commit",
+            "-q",
+            "-m",
+            "sample project",
+        ],
+    ):
+        code, _, stderr = await _run(args, cwd=path, timeout=60)
+        if code != 0:
+            return {"status": "error", "message": f"git failed: {stderr.strip()}"}
+
+    tool_context.state["repo_url"] = "bundled sample project (shopping_cart)"
+    tool_context.state["repo_path"] = str(path)
+    return {
+        "status": "success",
+        "repository": "sample shopping_cart",
+        "local_folder": path.name,
+        "files": sorted(str(p.relative_to(path)) for p in path.rglob("*.py")),
+    }
+
+
 def remove_cli_config(repo_path: Path) -> list[str]:
     """Deletes the repo's own Gemini CLI configuration. Returns what was removed."""
     removed = []
@@ -207,6 +254,12 @@ async def gemini_cli(
             "status": "error",
             "message": "No repository prepared. Call prepare_repository first.",
         }
+    return await run_gemini_cli(task, Path(repo_path), mode)
+
+
+async def run_gemini_cli(task: str, repo_path: Path, mode: str = "analyze") -> dict:
+    """Runs one headless Gemini CLI task in repo_path. Used by the tool and
+    by the test generation pipeline."""
     if mode not in ("analyze", "edit"):
         return {"status": "error", "message": 'mode must be "analyze" or "edit".'}
     if shutil.which(GEMINI_CLI_PATH) is None:
@@ -216,9 +269,9 @@ async def gemini_cli(
         }
 
     # Also covers a .gemini folder written by an earlier "edit" run.
-    remove_cli_config(Path(repo_path))
+    remove_cli_config(repo_path)
     code, stdout, stderr = await _run(
-        build_cli_args(task, mode), cwd=Path(repo_path), timeout=GEMINI_CLI_TIMEOUT
+        build_cli_args(task, mode), cwd=repo_path, timeout=GEMINI_CLI_TIMEOUT
     )
     if code == -1:
         return {"status": "error", "message": stderr}
@@ -262,5 +315,6 @@ def _needs_confirmation(mode: str = "analyze", **_) -> bool:
 
 
 prepare_repository_tool = FunctionTool(prepare_repository)
+prepare_sample_project_tool = FunctionTool(prepare_sample_project)
 # ADK pauses and asks the user before any run that may change files.
 gemini_cli_tool = FunctionTool(gemini_cli, require_confirmation=_needs_confirmation)

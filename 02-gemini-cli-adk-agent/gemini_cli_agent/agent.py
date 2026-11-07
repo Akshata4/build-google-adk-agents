@@ -1,14 +1,19 @@
 from google.adk.agents import Agent
 
 from .config import MODEL
+from .pipeline import test_generation_tool
 from .prompt import ROOT_INSTRUCTION
-from .tools import gemini_cli_tool, prepare_repository_tool
+from .tools import gemini_cli_tool, prepare_repository_tool, prepare_sample_project_tool
 
-# The test generation pipeline is added in the next step.
 root_agent = Agent(
     model=MODEL,
     name="CodebaseAssistant",
-    description="Analyzes GitHub codebases using Gemini CLI as a tool.",
+    description="Analyzes GitHub codebases and generates tests using Gemini CLI.",
     instruction=ROOT_INSTRUCTION,
-    tools=[prepare_repository_tool, gemini_cli_tool],
+    tools=[
+        prepare_repository_tool,
+        prepare_sample_project_tool,
+        gemini_cli_tool,
+        test_generation_tool,
+    ],
 )
