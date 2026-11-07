@@ -22,3 +22,7 @@ dev = [
     "pytest>=9.2.0",
     "ruff>=0.17.3",
 ]
+
+[tool.pytest.ini_options]
+# Cloned repositories in workspace/ have their own test suites; skip them.
+testpaths = ["tests"]
