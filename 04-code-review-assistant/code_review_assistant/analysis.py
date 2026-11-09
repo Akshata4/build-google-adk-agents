@@ -56,6 +56,14 @@ def extract_code(message: str) -> str | None:
     return text if "\n" in text else None
 
 
+def strip_fences(text: str) -> str:
+    """Model output with any ```python fence removed, otherwise unchanged."""
+    blocks = _FENCE.findall(text)
+    if text.lstrip().startswith("```") and blocks:
+        return max(blocks, key=len)
+    return text
+
+
 def _complexity(node: ast.AST) -> int:
     """Approximate cyclomatic complexity: 1 + decision points."""
     decisions = (

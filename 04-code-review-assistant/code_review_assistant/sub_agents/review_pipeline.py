@@ -12,6 +12,7 @@ CodeReviewPipeline (SequentialAgent)
                                      ends the loop once verified -> test_results
 4. ReviewScorer     plain code: verdict, per-user history (user: state)
 5. FeedbackWriter   critic model -> review_feedback, saved as an artifact
+6. FixOffer         plain code: offers "fix it" only when needs_fix
 """
 
 import json
@@ -29,7 +30,7 @@ from ..analysis import analyze_structure, check_style, extract_code
 from ..config import CRITIC_MODEL, MAX_CODE_CHARS, PASSING_STYLE_SCORE, WORKER_MODEL
 from ..harness import build_test_script
 from ..schemas import TestSuite
-from .common import Gate, make_test_run, text_event
+from .common import Gate, as_dict, make_test_run, text_event
 
 # Everything a review writes; cleared when a new review starts.
 REVIEW_KEYS = [
@@ -123,7 +124,9 @@ test fail:
 - Do not copy the code's own logic into the expected values.
 
 Rules:
-- Write 8-15 test functions named test_basic_*, test_edge_* or test_error_*.
+- Write 6-10 short test functions (at most 5 lines each, no comments)
+  named test_basic_*, test_edge_* or test_error_*. Cover the main
+  behaviour, the important edge cases and intended errors.
 - Use plain assert statements with a short message, e.g.
   assert f(2) == 4, "f(2) should be 4".
 - To check an intended exception (one the code is designed to raise for
@@ -161,9 +164,7 @@ class ScriptBuilder(BaseAgent):
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
         state = ctx.session.state
-        suite = state.get("test_suite") or {}
-        if isinstance(suite, str):
-            suite = json.loads(suite)
+        suite = as_dict(state.get("test_suite"))
         script = build_test_script(state["code_to_review"], suite.get("test_code", ""))
         yield text_event(
             self.name,
@@ -268,9 +269,7 @@ def numbered(code: str) -> str:
 def _feedback_instruction(ctx: ReadonlyContext) -> str:
     s = ctx.state
     tests = s.get("test_results") or {"status": "not run"}
-    suite = s.get("test_suite") or {}
-    if isinstance(suite, str):
-        suite = json.loads(suite)
+    suite = as_dict(s.get("test_suite"))
     return f"""
 You are an expert Python code reviewer and mentor. Write the review of the
 code below using ONLY the facts provided. Every number must come from the
@@ -305,8 +304,7 @@ Notable structure findings (docstrings, complexity, bug-risk, security).
 Review number N; if there is a previous review, compare its style score
 and pass rate with this one.
 
-End with exactly this line if needs_fix is true:
-**Reply "fix it" and I'll fix these issues and re-run the same tests.**
+Do not offer to fix the code; that offer is added separately.
 """
 
 
@@ -338,6 +336,20 @@ feedback_writer_agent = LlmAgent(
 )
 
 
+class FixOffer(BaseAgent):
+    """Offers a fix only when the verdict calls for one (not left to a model)."""
+
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        if (ctx.session.state.get("review_summary") or {}).get("needs_fix"):
+            yield text_event(
+                self.name,
+                '**Reply "fix it" and I\'ll fix these issues and re-run the same '
+                "tests.**",
+            )
+
+
 code_review_pipeline = SequentialAgent(
     name="CodeReviewPipeline",
     description=(
@@ -354,6 +366,7 @@ code_review_pipeline = SequentialAgent(
                 test_stage,
                 ReviewScorer(name="ReviewScorer"),
                 feedback_writer_agent,
+                FixOffer(name="FixOffer"),
             ],
         ),
     ],

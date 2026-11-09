@@ -6,10 +6,9 @@ the way the after_model_callback does).
 """
 
 import asyncio
-import subprocess
-import sys
 from types import SimpleNamespace
 
+from fakes import FakeExecutor
 from google.adk.agents import BaseAgent, SequentialAgent
 from google.adk.events import Event, EventActions
 from google.adk.models import LlmResponse
@@ -21,11 +20,13 @@ from code_review_assistant.harness import build_test_script
 from code_review_assistant.sub_agents.common import (
     Gate,
     ResultReader,
+    make_executor,
     read_test_results,
     record_executions,
 )
 from code_review_assistant.sub_agents.review_pipeline import (
     CodeIntake,
+    FixOffer,
     ReviewScorer,
     ScriptBuilder,
     StaticAnalysis,
@@ -55,31 +56,6 @@ class FakeTestWriter(BaseAgent):
         )
 
 
-class FakeExecutor(BaseAgent):
-    """Runs the script locally; `tamper` simulates a model changing it."""
-
-    tamper: bool = False
-
-    async def _run_async_impl(self, ctx):
-        script = ctx.session.state["test_script"]
-        if self.tamper:
-            script = script.replace("stack = start", "stack = [start]")
-        out = await asyncio.to_thread(
-            subprocess.run,
-            [sys.executable, "-I", "-c", script],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-        out = out.stdout
-        execution = {"code": script, "outcome": "OUTCOME_OK", "output": out}
-        yield Event(
-            author=self.name,
-            actions=EventActions(state_delta={"test_executions": [execution]}),
-        )
-
-
 def pipeline(tamper=False):
     return SequentialAgent(
         name="Pipeline",
@@ -106,6 +82,7 @@ def pipeline(tamper=False):
                         ],
                     ),
                     ReviewScorer(name="ReviewScorer"),
+                    FixOffer(name="FixOffer"),
                 ],
             ),
         ],
@@ -113,7 +90,10 @@ def pipeline(tamper=False):
 
 
 def review(messages, tamper=False):
-    """Sends each message in a new session of the same user; returns states."""
+    """Sends each message in a new session of the same user.
+
+    Returns each session's final state, with the messages shown under _texts.
+    """
 
     async def go():
         runner = InMemoryRunner(agent=pipeline(tamper), app_name="t")
@@ -123,14 +103,16 @@ def review(messages, tamper=False):
                 app_name="t", user_id="u"
             )
             message = types.Content(role="user", parts=[types.Part(text=text)])
-            async for _ in runner.run_async(
+            texts = []
+            async for event in runner.run_async(
                 user_id="u", session_id=session.id, new_message=message
             ):
-                pass
+                if event.content and event.content.parts:
+                    texts.append("".join(p.text or "" for p in event.content.parts))
             session = await runner.session_service.get_session(
                 app_name="t", user_id="u", session_id=session.id
             )
-            states.append(session.state)
+            states.append({**session.state, "_texts": texts})
         return states
 
     return asyncio.run(go())
@@ -151,6 +133,7 @@ def test_review_with_real_test_results():
 
 def test_tampered_execution_is_not_trusted():
     (state,) = review([f"```python\n{DFS}\n```"], tamper=True)
+    assert not any("fix it" in text for text in state["_texts"])
     assert state["test_results"] == {
         "status": "unverified",
         "reason": "the sandbox ran different code than the generated script",
@@ -168,6 +151,13 @@ def test_history_persists_across_sessions():
     assert previous["pass_rate"] == 0
     assert second["review_summary"]["pass_rate"] == 100
     assert second["review_summary"]["verdict"] == "Ready to use"
+
+
+def test_fix_offered_only_when_needed():
+    fixed = DFS.replace("stack = start", "stack = [start]")
+    buggy, clean = review([f"```python\n{DFS}\n```", f"```python\n{fixed}\n```"])
+    assert 'Reply "fix it"' in buggy["_texts"][-1]
+    assert not any("fix it" in text for text in clean["_texts"])
 
 
 def test_message_without_code_stops_early():
@@ -286,4 +276,21 @@ def test_verdicts():
 
 
 def test_root_routes_by_transfer():
-    assert [a.name for a in root_agent.sub_agents] == ["CodeReviewPipeline"]
+    assert [a.name for a in root_agent.sub_agents] == [
+        "CodeReviewPipeline",
+        "CodeFixPipeline",
+    ]
+
+
+def test_executor_retry_says_why():
+    agent = make_executor("X", "test_script", "test_executions", "test_results")
+    state = {"test_script": "print(1)", "test_results": None}
+    first = agent.instruction(SimpleNamespace(state=state))
+    assert "print(1)" in first and "rejected" not in first
+    state["test_results"] = {
+        "status": "unverified",
+        "reason": "the tests were not executed",
+    }
+    assert "rejected: the tests were not executed" in agent.instruction(
+        SimpleNamespace(state=state)
+    )

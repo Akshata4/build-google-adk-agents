@@ -1,5 +1,6 @@
 """Building blocks shared by the review and fix pipelines."""
 
+import json
 import warnings
 from collections.abc import AsyncGenerator, Callable
 
@@ -27,6 +28,13 @@ def text_event(author: str, text: str, state_delta: dict | None = None) -> Event
         content=types.Content(role="model", parts=[types.Part(text=text)]),
         actions=EventActions(state_delta=state_delta or {}),
     )
+
+
+def as_dict(value) -> dict:
+    """Structured output from state: a dict, or JSON text in older sessions."""
+    if isinstance(value, str):
+        return json.loads(value)
+    return value or {}
 
 
 class Gate(BaseAgent):
@@ -71,16 +79,27 @@ def record_executions(executions_key: str):
     return callback
 
 
-def make_executor(name: str, script_key: str, executions_key: str) -> LlmAgent:
+def make_executor(
+    name: str, script_key: str, executions_key: str, output_key: str
+) -> LlmAgent:
     """An agent that runs the script in state[script_key] in Gemini's sandbox."""
 
     def instruction(ctx: ReadonlyContext) -> str:
+        retry = ""
+        previous = ctx.state.get(output_key)
+        if previous and previous.get("status") == "unverified":
+            # Within the retry loop: say why the last attempt was rejected.
+            retry = (
+                f"\nYour previous attempt was rejected: {previous['reason']}. "
+                "Copying the code character for character is the whole task; "
+                "do not write your own tests or harness.\n"
+            )
         return f"""
 Run the following Python code with your code execution tool, exactly once
 and exactly as written: do not change, shorten, reformat or fix it, even if
 it looks wrong. You MUST actually execute it; never predict, simulate or
 write its output yourself. After it runs, reply only with: Tests executed.
-
+{retry}
 {ctx.state.get(script_key, "")}
 """
 
@@ -154,18 +173,25 @@ class ResultReader(BaseAgent):
 
 
 def make_test_run(
-    name: str, script_key: str, executions_key: str, output_key: str, attempts: int = 2
+    name: str,
+    script_key: str,
+    executions_key: str,
+    output_key: str,
+    attempts: int = 2,
+    executor: BaseAgent | None = None,
 ) -> LoopAgent:
     """Executor + reader, retried when the model didn't really run the code.
 
     Models sometimes answer with made-up output instead of using code
     execution. That is detected (no matching execution) and retried.
+    `executor` replaces the sandbox agent (tests use a local one).
     """
     return LoopAgent(
         name=name,
         max_iterations=attempts,
         sub_agents=[
-            make_executor(f"{name}Executor", script_key, executions_key),
+            executor
+            or make_executor(f"{name}Executor", script_key, executions_key, output_key),
             ResultReader(
                 name=f"{name}Reader",
                 script_key=script_key,

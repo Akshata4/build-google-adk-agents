@@ -8,6 +8,7 @@ import pytest
 
 from code_review_assistant.harness import (
     build_test_script,
+    clean_tests,
     parse_results,
     same_code,
     source_literal,
@@ -119,13 +120,43 @@ def test_script_keeps_code_readable():
     assert "    stack = start\n" in script  # not one escaped line
 
 
-def test_same_code_ignores_whitespace_only():
+def test_same_code_ignores_layout_and_comments_only():
     script = build_test_script(DFS, TESTS)
     assert same_code(script.replace("\n", "\n\n") + "  ", script)
+    # Seen live: the sandbox model dropped a comment line while copying.
+    assert same_code("# a comment the model dropped\n" + script, script)
+    assert same_code(
+        script.replace("import json as _json", "import json as _json  # noted"), script
+    )
+    # Any change inside the embedded code or tests is a different program.
     assert not same_code(script.replace("stack = start", "stack = [start]"), script)
+    changed_test = script.replace("{'a', 'b'}", "{'a'}")
+    assert changed_test != script
+    assert not same_code(changed_test, script)
     assert not same_code("", script)
 
 
 def test_parse_results_without_marker():
     assert parse_results("Traceback ...\nNameError: x") is None
     assert parse_results("RESULTS_JSON:{broken") is None
+
+
+def test_clean_tests_drops_comments_and_redefined_helper():
+    tests = (
+        "# Helper\n"
+        "def expect_raises(e, f, *a):\n    pass\n\n\n"
+        "def test_basic_one():\n    # one\n    assert dfs({}, 'a') == set()  # empty\n"
+    )
+    cleaned = clean_tests(tests)
+    assert "#" not in cleaned
+    assert "def expect_raises" not in cleaned
+    assert "def test_basic_one" in cleaned
+    assert clean_tests("def test_x(:\n") == "def test_x(:\n"  # left for load_error
+
+
+def test_runner_helper_used_after_cleaning():
+    tests = (
+        "def expect_raises(e, f, *a):\n    pass\n\n"
+        "def test_error_none():\n    expect_raises(TypeError, len, 5)\n"
+    )
+    assert run(build_test_script("x = 1\n", tests))["passed"] == 1
