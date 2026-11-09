@@ -20,6 +20,7 @@ packages = ["code_review_assistant"]
 
 [dependency-groups]
 dev = [
+    "google-adk[eval]>=2.13",
     "pytest>=9.2.0",
     "ruff>=0.17.3",
 ]

@@ -24,3 +24,6 @@ venv/
 
 # Repositories cloned by the Gemini CLI agent
 **/workspace/
+
+# SQLite session databases
+*.db

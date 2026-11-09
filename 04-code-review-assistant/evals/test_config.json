@@ -1,0 +1,17 @@
+{
+  "criteria": {
+    "tool_trajectory_avg_score": 1.0,
+    "pipeline_steps_match": 1.0,
+    "tests_verified": 1.0
+  },
+  "custom_metrics": {
+    "pipeline_steps_match": {
+      "code_config": {"name": "evals.metrics.pipeline_steps_match"},
+      "description": "The plain-code steps (verdict, outcome, fix offer) report exactly the expected messages."
+    },
+    "tests_verified": {
+      "code_config": {"name": "evals.metrics.tests_verified"},
+      "description": "Every sandbox test run ended with verified results."
+    }
+  }
+}

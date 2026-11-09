@@ -1,0 +1,350 @@
+{
+  "eval_set_id": "code_review",
+  "name": "Code review assistant",
+  "description": "Routing, verdicts and fixes, checked on the deterministic steps.",
+  "eval_cases": [
+    {
+      "eval_id": "explains_without_code",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "What can you do?"
+              }
+            ],
+            "role": "user"
+          },
+          "intermediate_data": {}
+        }
+      ],
+      "session_input": {
+        "app_name": "code_review_assistant",
+        "user_id": "eval_user"
+      }
+    },
+    {
+      "eval_id": "fix_without_review",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "fix it"
+              }
+            ],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "invocation_events": [
+              {
+                "author": "CodeReviewAssistant",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "args": {
+                          "agent_name": "CodeFixPipeline"
+                        },
+                        "name": "transfer_to_agent"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "FixIntake",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "There's no review in this conversation to fix yet. Paste the code first; after the review, reply \"fix it\"."
+                    }
+                  ],
+                  "role": "model"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "code_review_assistant",
+        "user_id": "eval_user"
+      }
+    },
+    {
+      "eval_id": "reviews_buggy_code",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "Please review this:\n```python\ndef dfs(graph, start):\n    \"\"\"Performs depth-first search on a graph.\"\"\"\n    visited = set()\n    stack = start\n    while stack:\n        current = stack.pop()\n        if current not in visited:\n            visited.add(current)\n            stack.extend(graph[current])\n    return visited\n```"
+              }
+            ],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [
+              {
+                "text": "**Reply \"fix it\" and I'll fix these issues and re-run the same tests.**"
+              }
+            ],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "invocation_events": [
+              {
+                "author": "CodeReviewAssistant",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "args": {
+                          "agent_name": "CodeReviewPipeline"
+                        },
+                        "name": "transfer_to_agent"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "CodeIntake",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Reviewing 12 lines of code."
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "ReviewScorer",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Verdict: Needs major fixes."
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "FixOffer",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "**Reply \"fix it\" and I'll fix these issues and re-run the same tests.**"
+                    }
+                  ],
+                  "role": "model"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "code_review_assistant",
+        "user_id": "eval_user"
+      }
+    },
+    {
+      "eval_id": "clean_code_is_ready",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "```python\ndef add(a, b):\n    \"\"\"Return the sum of a and b.\"\"\"\n    return a + b\n```"
+              }
+            ],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "invocation_events": [
+              {
+                "author": "CodeReviewAssistant",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "args": {
+                          "agent_name": "CodeReviewPipeline"
+                        },
+                        "name": "transfer_to_agent"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "CodeIntake",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Reviewing 3 lines of code."
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "ReviewScorer",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Verdict: Ready to use."
+                    }
+                  ],
+                  "role": "model"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "code_review_assistant",
+        "user_id": "eval_user"
+      }
+    },
+    {
+      "eval_id": "review_then_fix",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "Please review this:\n```python\ndef dfs(graph, start):\n    \"\"\"Performs depth-first search on a graph.\"\"\"\n    visited = set()\n    stack = start\n    while stack:\n        current = stack.pop()\n        if current not in visited:\n            visited.add(current)\n            stack.extend(graph[current])\n    return visited\n```"
+              }
+            ],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [
+              {
+                "text": "**Reply \"fix it\" and I'll fix these issues and re-run the same tests.**"
+              }
+            ],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "invocation_events": [
+              {
+                "author": "CodeReviewAssistant",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "args": {
+                          "agent_name": "CodeReviewPipeline"
+                        },
+                        "name": "transfer_to_agent"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "CodeIntake",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Reviewing 12 lines of code."
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "ReviewScorer",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Verdict: Needs major fixes."
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "FixOffer",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "**Reply \"fix it\" and I'll fix these issues and re-run the same tests.**"
+                    }
+                  ],
+                  "role": "model"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "fix it"
+              }
+            ],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "invocation_events": [
+              {
+                "author": "CodeReviewAssistant",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "args": {
+                          "agent_name": "CodeFixPipeline"
+                        },
+                        "name": "transfer_to_agent"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "FixIntake",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Fixing the code, up to 3 rounds; each fix is checked with the review's own tests."
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "FixOutcome",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Outcome: Fixed."
+                    }
+                  ],
+                  "role": "model"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "code_review_assistant",
+        "user_id": "eval_user"
+      }
+    }
+  ]
+}

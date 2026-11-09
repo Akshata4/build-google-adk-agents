@@ -33,3 +33,11 @@ MAX_CODE_CHARS = int(os.getenv("MAX_CODE_CHARS", "20000"))
 # reaches this value.
 PASSING_STYLE_SCORE = int(os.getenv("PASSING_STYLE_SCORE", "90"))
 MAX_FIX_ROUNDS = int(os.getenv("MAX_FIX_ROUNDS", "3"))
+
+# Checked by LimitsPlugin before any model call. A message holds the code
+# plus a short request, so it may be a little longer than the code limit.
+MAX_MESSAGE_CHARS = int(os.getenv("MAX_MESSAGE_CHARS", str(MAX_CODE_CHARS + 5000)))
+# A review takes about 4 model calls and a fix 2-3 per round.
+MAX_MODEL_CALLS_PER_USER_PER_DAY = int(
+    os.getenv("MAX_MODEL_CALLS_PER_USER_PER_DAY", "100")
+)
