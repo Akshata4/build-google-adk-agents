@@ -1,15 +1,15 @@
 from google.adk.agents import Agent
 
 from .config import WORKER_MODEL
+from .prompt import ROOT_INSTRUCTION
+from .sub_agents.review_pipeline import code_review_pipeline
 
-# Placeholder root agent; the review and fix pipelines are added next.
 root_agent = Agent(
     model=WORKER_MODEL,
     name="CodeReviewAssistant",
     description="Reviews Python code and fixes the issues it finds.",
-    instruction="""
-    You are a Python code review assistant. Explain that you can review
-    Python code (structure, PEP 8 style, tests run in a sandbox) and fix the
-    issues you find. Ask the user to paste the code they want reviewed.
-    """,
+    instruction=ROOT_INSTRUCTION,
+    # Agent transfer: the pipeline answers the user directly, so the root
+    # never repeats or rewrites the review (and costs one model call).
+    sub_agents=[code_review_pipeline],
 )

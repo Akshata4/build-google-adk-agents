@@ -26,3 +26,4 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = ["ignore:.*(Sequential|Loop)Agent is deprecated:DeprecationWarning"]
