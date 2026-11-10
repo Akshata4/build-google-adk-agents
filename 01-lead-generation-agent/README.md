@@ -1,5 +1,12 @@
 # Lead Generation Deep Research Agent (ADK)
 
+| | |
+|---|---|
+| **Agent** | A multi-agent deep research system that finds companies about to enter a target market |
+| **What it does** | Phase 1 researches companies that recently entered a market and extracts the signals they showed beforehand; phase 2 finds companies showing those signals now, validates and scores them, and writes a ranked lead report with real source links |
+| **Built with** | Google ADK (`SequentialAgent`, `ParallelAgent`, custom `BaseAgent`, `AgentTool`), Google Search grounding, Gemini |
+| **Video walkthrough** | _link coming soon_ |
+
 A multi-agent deep research system that finds sales leads the way a market research team
 would. Built with Google ADK, it works in two phases:
 
@@ -15,8 +22,6 @@ patterns, and choose how many leads to find.
 
 Reference: [Build a deep research agent with Google ADK](https://cloud.google.com/blog/products/ai-machine-learning/build-a-deep-research-agent-with-google-adk)
 ([MagnIeeT/leadGenerationAgentADK](https://github.com/MagnIeeT/leadGenerationAgentADK))
-
-**Video walkthrough:** _link coming soon_
 
 ## Example conversation
 

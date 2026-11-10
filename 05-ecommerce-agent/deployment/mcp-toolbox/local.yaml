@@ -1,0 +1,12 @@
+# Local overlay: the Homebrew Postgres store database.
+# Use with: toolbox --configs tools.yaml,local.yaml
+# A hosted deployment adds its own overlay (e.g. Cloud SQL or AlloyDB) defining
+# the same `store-db` source, without changing tools.yaml or the agent.
+kind: source
+name: store-db
+type: postgres
+host: ${DB_HOST:127.0.0.1}
+port: ${DB_PORT:5432}
+database: ${DB_NAME:sportsstore}
+user: ${DB_USER}
+password: ${DB_PASS}

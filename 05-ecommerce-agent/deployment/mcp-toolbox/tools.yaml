@@ -1,0 +1,517 @@
+# MCP Toolbox for Databases: the store's SQL tools, shared by every environment.
+# Combine with an environment overlay that defines the `store-db` source:
+#   local:  toolbox --configs tools.yaml,local.yaml
+#
+# Two toolsets:
+#   catalog_toolset   public data; the agent's model calls these directly
+#   customer_toolset  one customer's cart and orders. Every tool's first
+#                     parameter is the customer, which the agent's Python
+#                     wrappers fill in from the session. The model never sees
+#                     these tools, so it can't choose whose data to read or change.
+#
+# Write tools are single statements (data-modifying CTEs), so each one is
+# atomic: an order is created, stock reduced and the cart emptied together, or
+# nothing changes. Each returns one row saying what happened.
+
+# ---------- Catalog (public) ----------
+kind: tool
+name: search-products
+type: postgres-sql
+source: store-db
+description: >-
+  Search the catalog by what the customer describes (activity, features,
+  product type, brand or name). Typos in names are tolerated. Returns up to 8
+  products with brand, category, rating, price range and a short description.
+parameters:
+  - name: query
+    type: string
+    description: What the customer is looking for, e.g. "waterproof trail running shoes" or "2 person tent".
+statement: |
+  SELECT p.name, p.brand, p.category, p.rating,
+         min(v.price) AS min_price, max(v.price) AS max_price,
+         left(p.description, 160) AS description
+  FROM products p
+  JOIN product_variants v USING (product_id)
+  CROSS JOIN LATERAL (
+    SELECT ts_rank(p.search_vector,
+                   replace(plainto_tsquery('english', $1)::text, '&', '|')::tsquery) AS text_rank,
+           word_similarity($1, p.name || ' ' || p.brand) AS name_similarity
+  ) r
+  WHERE r.text_rank > 0 OR r.name_similarity > 0.5
+  GROUP BY p.product_id, r.text_rank, r.name_similarity
+  ORDER BY r.text_rank + r.name_similarity DESC, p.rating DESC
+  LIMIT 8;
+---
+kind: tool
+name: search-products-by-brand
+type: postgres-sql
+source: store-db
+description: List a brand's products (e.g. "Nike", "Hoka", "Salomon") with price ranges.
+parameters:
+  - name: brand
+    type: string
+    description: The brand name only, e.g. "Nike".
+statement: |
+  SELECT p.name, p.brand, p.category, p.rating,
+         min(v.price) AS min_price, max(v.price) AS max_price
+  FROM products p
+  JOIN product_variants v USING (product_id)
+  WHERE p.brand ILIKE $1 OR similarity(p.brand, $1) > 0.4
+  GROUP BY p.product_id
+  ORDER BY p.rating DESC, p.name
+  LIMIT 15;
+---
+kind: tool
+name: search-products-by-size
+type: postgres-sql
+source: store-db
+description: >-
+  Find products available in a size, optionally within a category. Shoe sizes are EU numbers like "42";
+  clothing and packs use "S", "M", "L" or "One Size".
+parameters:
+  - name: size
+    type: string
+    description: The size, e.g. "42" or "M".
+  - name: category
+    type: string
+    description: Running, Hiking and Camp, or an empty string for any category.
+statement: |
+  SELECT p.name, p.brand, p.category, v.size,
+         string_agg(v.color, ', ' ORDER BY v.color) AS colors,
+         min(v.price) AS price
+  FROM products p
+  JOIN product_variants v USING (product_id)
+  WHERE lower(v.size) = lower($1)
+    AND (trim(both '" ' from $2) = '' OR p.category ILIKE trim($2))
+  GROUP BY p.product_id, v.size
+  ORDER BY p.rating DESC, p.name
+  LIMIT 15;
+---
+kind: tool
+name: get-product-details
+type: postgres-sql
+source: store-db
+description: >-
+  Full details of one product by name (typos tolerated): description, rating
+  and every variant (size, color, price). Use before adding to the cart, to
+  know which sizes and colors exist.
+parameters:
+  - name: product_name
+    type: string
+    description: The product name, e.g. "Speedgoat 5".
+statement: |
+  SELECT p.name, p.brand, p.category, p.rating, p.description,
+         json_agg(json_build_object('size', v.size, 'color', v.color, 'price', v.price)
+                  ORDER BY v.color, v.size) AS variants
+  FROM products p
+  JOIN product_variants v USING (product_id)
+  WHERE p.product_id = (
+    SELECT product_id FROM products
+    WHERE lower(name) = lower($1) OR word_similarity($1, name) > 0.5
+    ORDER BY lower(name) = lower($1) DESC, similarity(name, $1) DESC
+    LIMIT 1
+  )
+  GROUP BY p.product_id;
+---
+kind: tool
+name: check-stock
+type: postgres-sql
+source: store-db
+description: >-
+  Units in stock of each size and color of a product, per store. Give a store
+  name to check one store, or an empty string to check every store.
+parameters:
+  - name: product_name
+    type: string
+    description: The exact product name.
+  - name: store_name
+    type: string
+    description: A store name, or an empty string for every store.
+statement: |
+  SELECT s.name AS store, v.size, v.color, i.quantity AS in_stock
+  FROM inventory i
+  JOIN product_variants v USING (variant_id)
+  JOIN products p USING (product_id)
+  JOIN stores s USING (store_id)
+  WHERE lower(p.name) = lower($1)
+    AND (trim(both '" ' from $2) = '' OR lower(s.name) = lower(trim($2)))
+  ORDER BY s.name, v.color, v.size;
+---
+kind: tool
+name: count-products-in-store
+type: postgres-sql
+source: store-db
+description: >-
+  How many products a store has in stock, optionally for one brand and/or
+  category (an empty string means any).
+parameters:
+  - name: store_name
+    type: string
+    description: The store name.
+  - name: brand
+    type: string
+    description: A brand, or an empty string for any brand.
+  - name: category
+    type: string
+    description: Running, Hiking and Camp, or an empty string for any category.
+statement: |
+  SELECT s.name AS store,
+         nullif(trim(both '" ' from $2), '') AS brand,
+         nullif(trim(both '" ' from $3), '') AS category,
+         count(DISTINCT p.product_id) AS products_in_stock,
+         coalesce(sum(i.quantity), 0) AS units_in_stock
+  FROM stores s
+  LEFT JOIN (inventory i
+             JOIN product_variants v USING (variant_id)
+             JOIN products p USING (product_id))
+    ON i.store_id = s.store_id AND i.quantity > 0
+   AND (trim(both '" ' from $2) = '' OR p.brand ILIKE trim($2))
+   AND (trim(both '" ' from $3) = '' OR p.category ILIKE trim($3))
+  WHERE lower(s.name) = lower($1)
+  GROUP BY s.store_id;
+---
+kind: tool
+name: list-stores
+type: postgres-sql
+source: store-db
+description: All stores with address and rating.
+statement: |
+  SELECT name, address, city, postal_code, rating FROM stores ORDER BY name;
+---
+kind: tool
+name: list-delivery-methods
+type: postgres-sql
+source: store-db
+description: The delivery options of a store, with cost and estimated time.
+parameters:
+  - name: store_name
+    type: string
+    description: The store name.
+statement: |
+  SELECT d.name, d.description, d.cost, d.estimated_time
+  FROM delivery_methods d
+  JOIN stores s USING (store_id)
+  WHERE lower(s.name) = lower($1)
+  ORDER BY d.cost;
+---
+# ---------- Customer (identity bound by the agent, never by the model) ----------
+kind: tool
+name: get-customer-profile
+type: postgres-sql
+source: store-db
+description: The customer's name and delivery address.
+parameters:
+  - name: customer
+    type: string
+    description: Bound by the agent.
+statement: |
+  SELECT first_name, last_name, address, city, postal_code
+  FROM customers WHERE username = $1;
+---
+kind: tool
+name: find-nearest-stores
+type: postgres-sql
+source: store-db
+description: The 3 stores closest to the customer's address, with distance in metres.
+parameters:
+  - name: customer
+    type: string
+    description: Bound by the agent.
+statement: |
+  SELECT s.name, s.address, s.city,
+         round(earth_distance(ll_to_earth(c.latitude, c.longitude),
+                              ll_to_earth(s.latitude, s.longitude)))::integer AS distance_m
+  FROM customers c CROSS JOIN stores s
+  WHERE c.username = $1
+  ORDER BY distance_m
+  LIMIT 3;
+---
+kind: tool
+name: add-to-cart
+type: postgres-sql
+source: store-db
+description: Adds a product variant to the customer's cart (adds to the quantity if already there).
+parameters:
+  - name: customer
+    type: string
+    description: Bound by the agent.
+  - name: product_name
+    type: string
+    description: The exact product name.
+  - name: size
+    type: string
+    description: The size.
+  - name: color
+    type: string
+    description: The color.
+  - name: quantity
+    type: integer
+    description: Units to add.
+statement: |
+  WITH c AS (SELECT customer_id FROM customers WHERE username = $1),
+  v AS (
+    SELECT v.variant_id, v.price
+    FROM product_variants v JOIN products p USING (product_id)
+    WHERE lower(p.name) = lower($2) AND lower(v.size) = lower($3) AND lower(v.color) = lower($4)
+  ),
+  saved AS (
+    INSERT INTO cart_items (customer_id, variant_id, quantity)
+    SELECT c.customer_id, v.variant_id, $5 FROM c, v
+    ON CONFLICT (customer_id, variant_id)
+      DO UPDATE SET quantity = cart_items.quantity + excluded.quantity
+    RETURNING quantity
+  )
+  SELECT (SELECT count(*) FROM c) = 1 AS customer_found,
+         (SELECT count(*) FROM v) = 1 AS variant_found,
+         (SELECT price FROM v) AS unit_price,
+         (SELECT quantity FROM saved) AS quantity_in_cart;
+---
+kind: tool
+name: view-cart
+type: postgres-sql
+source: store-db
+description: The customer's cart lines and total.
+parameters:
+  - name: customer
+    type: string
+    description: Bound by the agent.
+statement: |
+  SELECT p.name AS product, v.size, v.color, v.price AS unit_price, ci.quantity,
+         v.price * ci.quantity AS line_total,
+         sum(v.price * ci.quantity) OVER () AS cart_total
+  FROM cart_items ci
+  JOIN customers c USING (customer_id)
+  JOIN product_variants v USING (variant_id)
+  JOIN products p USING (product_id)
+  WHERE c.username = $1
+  ORDER BY ci.added_at, p.name;
+---
+kind: tool
+name: remove-from-cart
+type: postgres-sql
+source: store-db
+description: Removes a product variant from the customer's cart.
+parameters:
+  - name: customer
+    type: string
+    description: Bound by the agent.
+  - name: product_name
+    type: string
+    description: The exact product name.
+  - name: size
+    type: string
+    description: The size.
+  - name: color
+    type: string
+    description: The color.
+statement: |
+  WITH removed AS (
+    DELETE FROM cart_items ci
+    USING customers c, product_variants v, products p
+    WHERE ci.customer_id = c.customer_id AND c.username = $1
+      AND ci.variant_id = v.variant_id AND v.product_id = p.product_id
+      AND lower(p.name) = lower($2) AND lower(v.size) = lower($3) AND lower(v.color) = lower($4)
+    RETURNING ci.quantity
+  )
+  SELECT count(*) AS lines_removed FROM removed;
+---
+kind: tool
+name: place-order
+type: postgres-sql
+source: store-db
+description: >-
+  Orders everything in the customer's cart from one store, atomically: checks
+  stock at that store, creates the order, reduces stock and empties the cart.
+  Nothing changes if anything is missing or out of stock.
+parameters:
+  - name: customer
+    type: string
+    description: Bound by the agent.
+  - name: store_name
+    type: string
+    description: The store fulfilling the order.
+  - name: delivery_method
+    type: string
+    description: The delivery method name.
+statement: |
+  WITH c AS (
+    SELECT customer_id, address || ', ' || postal_code || ' ' || city AS full_address
+    FROM customers WHERE username = $1
+  ),
+  s AS (SELECT store_id FROM stores WHERE lower(name) = lower($2)),
+  d AS (
+    SELECT delivery_method_id, name, cost FROM delivery_methods
+    WHERE store_id = (SELECT store_id FROM s) AND lower(name) = lower($3)
+  ),
+  cart AS (
+    SELECT ci.variant_id, ci.quantity, v.price, p.name,
+           'Size: ' || v.size || ', Color: ' || v.color AS details,
+           coalesce(i.quantity, 0) AS in_stock
+    FROM cart_items ci
+    JOIN c USING (customer_id)
+    JOIN product_variants v USING (variant_id)
+    JOIN products p USING (product_id)
+    LEFT JOIN inventory i ON i.variant_id = ci.variant_id AND i.store_id = (SELECT store_id FROM s)
+  ),
+  ok AS (
+    SELECT (SELECT count(*) FROM c) = 1 AND (SELECT count(*) FROM s) = 1
+       AND (SELECT count(*) FROM d) = 1 AND (SELECT count(*) FROM cart) > 0
+       AND NOT EXISTS (SELECT 1 FROM cart WHERE in_stock < quantity) AS good
+  ),
+  new_order AS (
+    INSERT INTO orders (customer_id, store_id, delivery_method_id, status, shipping_address,
+                        items_total, shipping_cost, total_amount)
+    SELECT c.customer_id, (SELECT store_id FROM s), d.delivery_method_id, 'pending',
+           CASE WHEN d.name = 'Store Pickup' THEN NULL ELSE c.full_address END,
+           t.items_total, d.cost, t.items_total + d.cost
+    FROM c, d, (SELECT sum(price * quantity) AS items_total FROM cart) t
+    WHERE (SELECT good FROM ok)
+    RETURNING order_id, items_total, shipping_cost, total_amount, shipping_address
+  ),
+  items AS (
+    INSERT INTO order_items (order_id, variant_id, quantity, unit_price, product_name, variant_details)
+    SELECT o.order_id, cart.variant_id, cart.quantity, cart.price, cart.name, cart.details
+    FROM new_order o, cart
+    RETURNING quantity
+  ),
+  stock AS (
+    UPDATE inventory i SET quantity = i.quantity - cart.quantity
+    FROM cart, new_order
+    WHERE i.variant_id = cart.variant_id AND i.store_id = (SELECT store_id FROM s)
+    RETURNING i.variant_id
+  ),
+  emptied AS (
+    DELETE FROM cart_items
+    WHERE customer_id = (SELECT customer_id FROM c) AND EXISTS (SELECT 1 FROM new_order)
+    RETURNING variant_id
+  )
+  SELECT o.order_id, o.items_total, o.shipping_cost, o.total_amount, o.shipping_address,
+         (SELECT count(*) FROM items) AS lines_ordered,
+         (SELECT count(*) FROM emptied) AS cart_lines_cleared,
+         (SELECT count(*) FROM c) = 1 AS customer_found,
+         (SELECT count(*) FROM s) = 1 AS store_found,
+         (SELECT count(*) FROM d) = 1 AS delivery_method_found,
+         (SELECT count(*) FROM cart) AS cart_lines,
+         (SELECT json_agg(json_build_object('product', name, 'details', details,
+                                            'requested', quantity, 'in_stock', in_stock))
+            FROM cart WHERE in_stock < quantity) AS out_of_stock
+  FROM (SELECT 1) one LEFT JOIN new_order o ON true;
+---
+kind: tool
+name: list-orders
+type: postgres-sql
+source: store-db
+description: The customer's 10 most recent orders with items, store, delivery and status.
+parameters:
+  - name: customer
+    type: string
+    description: Bound by the agent.
+statement: |
+  SELECT o.order_id, o.status, o.created_at::date AS order_date, s.name AS store,
+         d.name AS delivery_method, o.shipping_address,
+         o.items_total, o.shipping_cost, o.total_amount,
+         (SELECT json_agg(json_build_object('product', oi.product_name, 'details', oi.variant_details,
+                                            'quantity', oi.quantity, 'unit_price', oi.unit_price))
+            FROM order_items oi WHERE oi.order_id = o.order_id) AS items
+  FROM orders o
+  JOIN customers c USING (customer_id)
+  JOIN stores s USING (store_id)
+  JOIN delivery_methods d USING (delivery_method_id)
+  WHERE c.username = $1
+  ORDER BY o.created_at DESC
+  LIMIT 10;
+---
+kind: tool
+name: change-delivery-method
+type: postgres-sql
+source: store-db
+description: Changes the delivery method of one of the customer's pending orders and updates its total.
+parameters:
+  - name: customer
+    type: string
+    description: Bound by the agent.
+  - name: order_id
+    type: integer
+    description: The order number.
+  - name: delivery_method
+    type: string
+    description: The new delivery method name.
+statement: |
+  WITH o AS (
+    SELECT o.order_id, o.store_id, c.address || ', ' || c.postal_code || ' ' || c.city AS full_address
+    FROM orders o JOIN customers c USING (customer_id)
+    WHERE c.username = $1 AND o.order_id = $2 AND o.status = 'pending'
+  ),
+  d AS (
+    SELECT delivery_method_id, name, cost FROM delivery_methods
+    WHERE store_id = (SELECT store_id FROM o) AND lower(name) = lower($3)
+  ),
+  updated AS (
+    UPDATE orders SET delivery_method_id = d.delivery_method_id,
+                      shipping_cost = d.cost,
+                      total_amount = orders.items_total + d.cost,
+                      shipping_address = CASE WHEN d.name = 'Store Pickup' THEN NULL
+                                              ELSE (SELECT full_address FROM o) END
+    FROM d
+    WHERE orders.order_id = (SELECT order_id FROM o)
+    RETURNING orders.order_id, orders.shipping_cost, orders.total_amount
+  )
+  SELECT (SELECT count(*) FROM o) = 1 AS pending_order_found,
+         (SELECT count(*) FROM d) = 1 AS delivery_method_found,
+         u.order_id, u.shipping_cost, u.total_amount
+  FROM (SELECT 1) one LEFT JOIN updated u ON true;
+---
+kind: tool
+name: cancel-order
+type: postgres-sql
+source: store-db
+description: Cancels one of the customer's pending orders and puts its items back in stock.
+parameters:
+  - name: customer
+    type: string
+    description: Bound by the agent.
+  - name: order_id
+    type: integer
+    description: The order number.
+statement: |
+  WITH cancelled AS (
+    UPDATE orders o SET status = 'cancelled'
+    FROM customers c
+    WHERE o.customer_id = c.customer_id AND c.username = $1
+      AND o.order_id = $2 AND o.status = 'pending'
+    RETURNING o.order_id, o.store_id, o.total_amount
+  ),
+  restocked AS (
+    UPDATE inventory i SET quantity = i.quantity + oi.quantity
+    FROM order_items oi, cancelled o
+    WHERE oi.order_id = o.order_id AND i.variant_id = oi.variant_id AND i.store_id = o.store_id
+    RETURNING i.variant_id
+  )
+  SELECT x.order_id AS cancelled_order_id, x.total_amount AS refunded_amount,
+         (SELECT count(*) FROM restocked) AS lines_restocked
+  FROM (SELECT 1) one LEFT JOIN cancelled x ON true;
+---
+kind: toolset
+name: catalog_toolset
+tools:
+  - search-products
+  - search-products-by-brand
+  - search-products-by-size
+  - get-product-details
+  - check-stock
+  - count-products-in-store
+  - list-stores
+  - list-delivery-methods
+---
+kind: toolset
+name: customer_toolset
+tools:
+  - get-customer-profile
+  - find-nearest-stores
+  - add-to-cart
+  - view-cart
+  - remove-from-cart
+  - place-order
+  - list-orders
+  - change-delivery-method
+  - cancel-order

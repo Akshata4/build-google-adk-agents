@@ -1,5 +1,12 @@
 # Software Bug Assistant (ADK + MCP)
 
+| | |
+|---|---|
+| **Agent** | A software bug triage assistant for IT support and developers |
+| **What it does** | Searches, creates and updates internal tickets, checks GitHub issues and pull requests, and looks up Stack Overflow and Google Search for known fixes |
+| **Built with** | Google ADK, MCP Toolbox for Databases (Postgres), GitHub remote MCP server, LangChain StackExchange tool, Google Search |
+| **Video walkthrough** | _link coming soon_ |
+
 A conversational assistant that helps IT support and developers triage software bugs.
 Built with Google ADK, it combines five tool types:
 
@@ -10,8 +17,6 @@ Built with Google ADK, it combines five tool types:
 - GitHub remote MCP server (issues and pull requests)
 
 Reference: [Tools make an agent: from zero to assistant with ADK](https://cloud.google.com/blog/topics/developers-practitioners/tools-make-an-agent-from-zero-to-assistant-with-adk)
-
-**Video walkthrough:** _link coming soon_
 
 ## Architecture
 

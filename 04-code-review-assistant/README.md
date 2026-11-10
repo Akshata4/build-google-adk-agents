@@ -1,5 +1,12 @@
 # Code Review Assistant (ADK)
 
+| | |
+|---|---|
+| **Agent** | A production quality Python code review and fix assistant |
+| **What it does** | Reviews pasted code (AST checks, PEP 8 score, unit tests executed and verified in Gemini's sandbox), then on "fix it" fixes the code and re-runs the same tests until they pass |
+| **Built with** | Google ADK (agent transfer, custom agents, `BuiltInCodeExecutor`, plugins, artifacts, SQLite sessions, `adk eval`), Gemini code execution, pycodestyle |
+| **Video walkthrough** | _link coming soon_ |
+
 A production quality Python code review assistant built with Google ADK. Paste Python code and
 it:
 
@@ -15,8 +22,6 @@ counts model calls and tokens, refuses oversized requests before they cost anyth
 sessions in SQLite and ships an `adk eval` set.
 
 Reference: [ayoisio/adk-code-review-assistant](https://github.com/ayoisio/adk-code-review-assistant)
-
-**Video walkthrough:** _link coming soon_
 
 ## Example conversation
 
