@@ -2,11 +2,11 @@
 
 | # | Agent | What it does | Video |
 |---|---|---|---|
-| a | [Lead Generation Deep Research Agent](01-lead-generation-agent/) | Studies companies that recently entered a market (e.g. fintech in Thailand), learns the signals they showed beforehand, then finds companies showing those signals now and writes a ranked lead report with real sources | _coming soon_ |
-| b | [Gemini CLI inside an ADK Pipeline](02-gemini-cli-adk-agent/) | Uses Gemini CLI as a tool to analyze any public GitHub repository, and generates unit tests in a write → pytest → fix loop that keeps tests exposing real bugs | _coming soon_ |
-| c | [Software Bug Assistant (MCP)](03-bug-assistant-mcp/) | Triages software bugs: manages internal tickets in Postgres through MCP Toolbox, checks GitHub issues and PRs through GitHub's MCP server, and searches Stack Overflow and Google for fixes | _coming soon_ |
-| d | [Code Review Assistant](04-code-review-assistant/) | Reviews Python code with unit tests executed and verified in Gemini's sandbox, then fixes it and re-runs the same tests until they pass; production features: usage tracking, limits, SQLite sessions, `adk eval` | _coming soon_ |
-| e | [Sports Store Agent (e-commerce)](05-ecommerce-agent/) | A shopping assistant on Postgres through MCP Toolbox: product search, stock per store, cart and orders, with customer identity bound in code, atomic orders and confirmation for order changes | _coming soon_ |
+| a | [Lead Generation Deep Research Agent](01-lead-generation-agent/) | Studies companies that recently entered a market (e.g. fintech in Thailand), learns the signals they showed beforehand, then finds companies showing those signals now and writes a ranked lead report with real sources | [Watch on YouTube](https://www.youtube.com/watch?v=GGK-tBdYchU) |
+| b | [Gemini CLI inside an ADK Pipeline](02-gemini-cli-adk-agent/) | Uses Gemini CLI as a tool to analyze any public GitHub repository, and generates unit tests in a write → pytest → fix loop that keeps tests exposing real bugs | [Watch on YouTube](https://www.youtube.com/watch?v=VWeCEH-ycGY) |
+| c | [Software Bug Assistant (MCP)](03-bug-assistant-mcp/) | Triages software bugs: manages internal tickets in Postgres through MCP Toolbox, checks GitHub issues and PRs through GitHub's MCP server, and searches Stack Overflow and Google for fixes | [Watch on YouTube](https://www.youtube.com/watch?v=erAqDVXMOTQ) |
+| d | [Code Review Assistant](04-code-review-assistant/) | Reviews Python code with unit tests executed and verified in Gemini's sandbox, then fixes it and re-runs the same tests until they pass; production features: usage tracking, limits, SQLite sessions, `adk eval` | [Watch on YouTube](https://www.youtube.com/watch?v=PFH9yRJJxeg) |
+| e | [Sports Store Agent (e-commerce)](05-ecommerce-agent/) | A shopping assistant on Postgres through MCP Toolbox: product search, stock per store, cart and orders, with customer identity bound in code, atomic orders and confirmation for order changes | [Watch on YouTube](https://www.youtube.com/watch?v=jFmRu_yC_vs) |
 
 End-to-end implementations of five agents built with
 [Google Agent Development Kit (ADK)](https://google.github.io/adk-docs/), each based on a

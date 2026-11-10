@@ -5,7 +5,7 @@
 | **Agent** | A multi-agent deep research system that finds companies about to enter a target market |
 | **What it does** | Phase 1 researches companies that recently entered a market and extracts the signals they showed beforehand; phase 2 finds companies showing those signals now, validates and scores them, and writes a ranked lead report with real source links |
 | **Built with** | Google ADK (`SequentialAgent`, `ParallelAgent`, custom `BaseAgent`, `AgentTool`), Google Search grounding, Gemini |
-| **Video walkthrough** | _link coming soon_ |
+| **Video walkthrough** | [Watch on YouTube](https://www.youtube.com/watch?v=GGK-tBdYchU) |
 
 A multi-agent deep research system that finds sales leads the way a market research team
 would. Built with Google ADK, it works in two phases:

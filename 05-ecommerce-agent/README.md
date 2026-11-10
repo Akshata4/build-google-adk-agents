@@ -5,7 +5,7 @@
 | **Agent** | Finn, a shopping assistant for a sports store with six shops in Barcelona |
 | **What it does** | Finds running and hiking gear by description, brand or size; shows variants and stock per store; manages the cart; places, changes and cancels orders |
 | **Built with** | Google ADK, MCP Toolbox for Databases, Postgres, Gemini |
-| **Video walkthrough** | _link coming soon_ |
+| **Video walkthrough** | [Watch on YouTube](https://www.youtube.com/watch?v=jFmRu_yC_vs) |
 
 A production quality e-commerce agent. All store data lives in Postgres and is reached through
 [MCP Toolbox for Databases](https://github.com/googleapis/mcp-toolbox): SQL tools declared in

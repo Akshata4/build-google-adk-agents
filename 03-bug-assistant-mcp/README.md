@@ -5,7 +5,7 @@
 | **Agent** | A software bug triage assistant for IT support and developers |
 | **What it does** | Searches, creates and updates internal tickets, checks GitHub issues and pull requests, and looks up Stack Overflow and Google Search for known fixes |
 | **Built with** | Google ADK, MCP Toolbox for Databases (Postgres), GitHub remote MCP server, LangChain StackExchange tool, Google Search |
-| **Video walkthrough** | _link coming soon_ |
+| **Video walkthrough** | [Watch on YouTube](https://www.youtube.com/watch?v=erAqDVXMOTQ) |
 
 A conversational assistant that helps IT support and developers triage software bugs.
 Built with Google ADK, it combines five tool types:

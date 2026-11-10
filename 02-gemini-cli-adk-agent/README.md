@@ -5,7 +5,7 @@
 | **Agent** | An ADK agent that uses Gemini CLI as a tool on real codebases |
 | **What it does** | Analyzes any public GitHub repository (architecture, code quality, test plans) and generates unit tests in a plan → write → pytest → fix loop, keeping tests that expose real bugs |
 | **Built with** | Google ADK (function tools with confirmation, `AgentTool`, `SequentialAgent`, `LoopAgent`), Gemini CLI (headless, read-only policy), pytest |
-| **Video walkthrough** | _link coming soon_ |
+| **Video walkthrough** | [Watch on YouTube](https://www.youtube.com/watch?v=VWeCEH-ycGY) |
 
 An ADK agent that uses [Gemini CLI](https://github.com/google-gemini/gemini-cli), Google's
 open-source coding agent, as a tool. ADK handles the conversation and the workflow. Gemini
